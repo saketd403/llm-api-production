@@ -1,0 +1,4 @@
+prompts:
+  summarize:
+    path: "prompts/summarization/prompt.txt"
+    description: "Prompt for summarizing text content"

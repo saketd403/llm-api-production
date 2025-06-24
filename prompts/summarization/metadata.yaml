@@ -1,0 +1,8 @@
+    version: 1.0
+    description: "A simple, one-shot prompt to summarize text."
+    variables:
+      - text
+    # You could even add test cases here in the future
+    test_cases:
+      - input: "This is a long test sentence."
+        expected_keywords: ["test", "sentence"]
