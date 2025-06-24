@@ -1,0 +1,2 @@
+You are a helpful assistant. Summarize the following text in a concise manner.
+Text: {text} 

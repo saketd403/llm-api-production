@@ -1,0 +1,113 @@
+# --- Kubernetes Secret (Prerequisite) ---
+# You must create this secret beforehand to store your OpenAI API key.
+# Run this command, replacing 'your_openai_api_key_here' with your actual key:
+# kubectl create secret generic openai-secret --from-literal=OPENAI_API_KEY='your_openai_api_key_here'
+# ---
+
+# --- 1. Deployment ---
+# This section defines the desired state for your application pods.
+# It ensures that three replicas of your summarizer app are always running.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: summarizer-deployment
+  labels:
+    app: summarizer
+spec:
+  replicas: 3 # You requested three replicas for high availability.
+  selector:
+    matchLabels:
+      app: summarizer
+  template:
+    metadata:
+      labels:
+        app: summarizer
+    spec:
+      containers:
+        - name: summarizer-container
+          # IMPORTANT: Replace this with the actual path to your image in a registry
+          # (e.g., your-docker-hub-username/summarizer:latest or gcr.io/your-project/summarizer:latest)
+          image: your-docker-registry/summarizer-app:latest
+          
+          ports:
+            - containerPort: 8000 # The port your FastAPI app runs on inside the container.
+          
+          resources:
+            requests:
+              cpu: "250m" # Start with 0.25 of a CPU core
+              memory: "256Mi" # Start with 256 Megabytes of RAM
+            limits:
+              cpu: "1000m" # Max of 1 CPU core
+              memory: "1Gi" # Max of 1 Gigabyte of RAM
+          
+          readinessProbe:
+            httpGet:
+              path: /health # Checks if the app is ready to serve traffic
+              port: 8000
+            initialDelaySeconds: 15 # Wait 15s after container starts before probing
+            periodSeconds: 10
+            
+          livenessProbe:
+            httpGet:
+              path: /health # Checks if the app is still alive
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openai-secret # The name of the secret you created.
+                  key: OPENAI_API_KEY # The key within the secret.
+---
+# --- 2. Service ---
+# This section creates a stable internal network endpoint for your deployment.
+# It acts as an internal load balancer, distributing traffic among the three pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: summarizer-service
+spec:
+  # The ClusterIP type makes the service only reachable within the Kubernetes cluster.
+  # The Ingress will handle external traffic.
+  type: ClusterIP
+  selector:
+    app: summarizer # This selector links the service to the pods managed by the deployment.
+  ports:
+    - protocol: TCP
+      port: 80 # The port the service will listen on.
+      targetPort: 8000 # The port on the pods to forward traffic to.
+---
+# --- 3. Ingress ---
+# This section manages external access to the service, typically via an HTTP/HTTPS load balancer.
+# It routes external requests to your internal summarizer-service.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: summarizer-ingress
+  annotations:
+    # This annotation is for an NGINX Ingress controller. You may need to change
+    # this depending on the Ingress controller used in your cluster (e.g., GKE, Traefik).
+    kubernetes.io/ingress.class: "nginx"
+    # Optional: If you use cert-manager for automatic TLS, uncomment the next line.
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  rules:
+    # IMPORTANT: Replace 'summarizer.your-domain.com' with the actual domain name
+    # you want to use for your service.
+    - host: summarizer.your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: summarizer-service # Routes traffic to the service defined above.
+                port:
+                  number: 80 # The port on the service to route to.
+  # Optional: Uncomment this section to enable TLS for HTTPS.
+  # tls:
+  #  - hosts:
+  #    - summarizer.your-domain.com
+  #    secretName: summarizer-tls-secret # cert-manager would create this automatically.
